@@ -17,6 +17,8 @@ import 'package:timezone/data/latest.dart' as tzData;
 import 'package:timezone/timezone.dart' as tz;
 import 'package:progress_bar_countdown/progress_bar_countdown.dart';
 
+import 'loadMypush.dart' show PushNotificationWebViewPage;
+
 // --------- TOKEN CHANNEL SERVICE -------------
 class TokenChannelService {
   static const MethodChannel _channel = MethodChannel('com.example.fcm/token');
@@ -333,8 +335,25 @@ class _DeviceBootstrapperState extends State<DeviceBootstrapper> {
   void initState() {
     super.initState();
     _initApp();
+    _setupChannels();
   }
-
+  void _setupChannels() {
+    MethodChannel('com.example.fcm/notification').setMethodCallHandler(
+          (call) async {
+        if (call.method == "onNotificationTap") {
+          final Map<String, dynamic> data = Map<String, dynamic>.from(call.arguments);
+          if (data["uri"] != null && !data["uri"].contains("Нет URI")) {
+            Navigator.pushAndRemoveUntil(
+              context,
+              MaterialPageRoute(
+                builder: (context) => PushNotificationWebViewPage(data["uri"]),
+              ),
+                  (route) => false,
+            );
+          }
+        }
+      },
+    );}
   Future<void> _initApp() async {
     _loaderProvider.setProgress(0.1);
 
@@ -440,7 +459,27 @@ class _MainWebContainerState extends State<MainWebContainer> {
     _blockContent();
     _webVM = MainWebViewModel();
     _initialize();
+    _setupChannels();
   }
+
+
+  void _setupChannels() {
+    MethodChannel('com.example.fcm/notification').setMethodCallHandler(
+          (call) async {
+        if (call.method == "onNotificationTap") {
+          final Map<String, dynamic> data = Map<String, dynamic>.from(call.arguments);
+          if (data["uri"] != null && !data["uri"].contains("Нет URI")) {
+            Navigator.pushAndRemoveUntil(
+              context,
+              MaterialPageRoute(
+                builder: (context) => PushNotificationWebViewPage(data["uri"]),
+              ),
+                  (route) => false,
+            );
+          }
+        }
+      },
+    );}
 void _blockContent(){
   for (final adUrlFilter in FILTER) {
     contentBlockers.add(ContentBlocker(
