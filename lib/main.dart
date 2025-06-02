@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:async';
 import 'package:app_tracking_transparency/app_tracking_transparency.dart'
     show AppTrackingTransparency, TrackingStatus;
 import 'package:appsflyer_sdk/appsflyer_sdk.dart'
@@ -16,7 +17,10 @@ import 'package:package_info_plus/package_info_plus.dart';
 import 'package:timezone/data/latest.dart' as tzData;
 import 'package:timezone/timezone.dart' as tz;
 import 'package:progress_bar_countdown/progress_bar_countdown.dart';
+import 'package:connectivity_plus/connectivity_plus.dart';
+import 'package:flutter_offline/flutter_offline.dart';
 
+// ---- ДЛЯ ПРИМЕРА: можно убрать, если нет файла ----
 import 'loadMypush.dart' show PushNotificationWebViewPage;
 
 // --------- TOKEN CHANNEL SERVICE -------------
@@ -158,7 +162,6 @@ class PushNotificationManager extends ChangeNotifier {
 
   String? get fcmToken => _fcmToken;
 
-  /// Получить токен только через канал
   Future<void> fetchFcmToken({Function(String)? onToken}) async {
     try {
       _tokenChannelService.listenToken((token) {
@@ -167,7 +170,6 @@ class PushNotificationManager extends ChangeNotifier {
         notifyListeners();
         if (onToken != null) onToken(token);
       });
-      // Безопасный таймаут на случай если токен не придёт
       Future.delayed(const Duration(seconds: 8), () {
         if (isLoading) {
           isLoading = false;
@@ -228,7 +230,6 @@ class _AttScreenState extends State<AttScreen> {
         status == TrackingStatus.denied ||
         status == TrackingStatus.restricted ||
         status == TrackingStatus.notSupported) {
-      // Если уже выбран или не поддерживается — сразу дальше!
       _goNext();
     } else {
       setState(() {
@@ -265,7 +266,6 @@ class _AttScreenState extends State<AttScreen> {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-         //     const Icon(Icons.privacy_tip, size: 64, color: Colors.blue),
               const SizedBox(height: 24),
               const Text(
                 'Allow tracking to receive personalized offers and advertisements. You can always change your choice in the settings.',
@@ -357,17 +357,14 @@ class _DeviceBootstrapperState extends State<DeviceBootstrapper> {
   Future<void> _initApp() async {
     _loaderProvider.setProgress(0.1);
 
-    // Проверяем разрешение на пуш
     final settings = await FirebaseMessaging.instance.getNotificationSettings();
 
     if (settings.authorizationStatus == AuthorizationStatus.authorized ||
         settings.authorizationStatus == AuthorizationStatus.provisional) {
-      // Получаем токен через канал и только потом продолжаем!
       await _pushManager.fetchFcmToken(onToken: (token) {
         _navigateOnce(token ?? "");
       });
     } else {
-      // Разрешения нет — продолжаем без токена
       _navigateOnce("");
     }
   }
@@ -428,7 +425,7 @@ class _DeviceBootstrapperState extends State<DeviceBootstrapper> {
   }
 }
 
-// --------- MAIN WEBVIEW SCREEN -------------
+// --------- MAIN WEBVIEW SCREEN c flutter_offline -------------
 class MainWebContainer extends StatefulWidget {
   final String? fcmToken;
   final LoaderProvider loaderProvider;
@@ -450,18 +447,18 @@ class _MainWebContainerState extends State<MainWebContainer> {
   late final MainWebViewModel _webVM;
   final String _webUrl = "https://gameapi.seadiver.club";
   bool _initialized = false;
-  final ProgressBarCountdownController controller =
-  ProgressBarCountdownController();
+  final ProgressBarCountdownController controller = ProgressBarCountdownController();
   final List<ContentBlocker> contentBlockers = [];
+
   @override
   void initState() {
     super.initState();
+
     _blockContent();
     _webVM = MainWebViewModel();
     _initialize();
     _setupChannels();
   }
-
 
   void _setupChannels() {
     MethodChannel('com.example.fcm/notification').setMethodCallHandler(
@@ -479,48 +476,45 @@ class _MainWebContainerState extends State<MainWebContainer> {
           }
         }
       },
-    );}
-void _blockContent(){
-  for (final adUrlFilter in FILTER) {
-    contentBlockers.add(ContentBlocker(
-        trigger: ContentBlockerTrigger(
-          urlFilter: adUrlFilter,
-        ),
-        action: ContentBlockerAction(
-          type: ContentBlockerActionType.BLOCK,
-        )));
+    );
   }
 
-  contentBlockers.add(ContentBlocker(
-    trigger: ContentBlockerTrigger(urlFilter: ".cookie", resourceType: [
-      //   ContentBlockerTriggerResourceType.IMAGE,
+  void _blockContent() {
+    for (final adUrlFilter in FILTER) {
+      contentBlockers.add(ContentBlocker(
+          trigger: ContentBlockerTrigger(
+            urlFilter: adUrlFilter,
+          ),
+          action: ContentBlockerAction(
+            type: ContentBlockerActionType.BLOCK,
+          )));
+    }
 
-      ContentBlockerTriggerResourceType.RAW
-    ]),
-    action: ContentBlockerAction(
-        type: ContentBlockerActionType.BLOCK, selector: ".notification"),
-  ));
+    contentBlockers.add(ContentBlocker(
+      trigger: ContentBlockerTrigger(urlFilter: ".cookie", resourceType: [
+        ContentBlockerTriggerResourceType.RAW
+      ]),
+      action: ContentBlockerAction(
+          type: ContentBlockerActionType.BLOCK, selector: ".notification"),
+    ));
 
-  contentBlockers.add(ContentBlocker(
-    trigger: ContentBlockerTrigger(urlFilter: ".cookie", resourceType: [
-      //   ContentBlockerTriggerResourceType.IMAGE,
-
-      ContentBlockerTriggerResourceType.RAW
-    ]),
-    action: ContentBlockerAction(
-        type: ContentBlockerActionType.CSS_DISPLAY_NONE,
-        selector: ".privacy-info"),
-  ));
-  // apply the "display: none" style to some HTML elements
-  contentBlockers.add(ContentBlocker(
-      trigger: ContentBlockerTrigger(
-        urlFilter: ".*",
-      ),
+    contentBlockers.add(ContentBlocker(
+      trigger: ContentBlockerTrigger(urlFilter: ".cookie", resourceType: [
+        ContentBlockerTriggerResourceType.RAW
+      ]),
       action: ContentBlockerAction(
           type: ContentBlockerActionType.CSS_DISPLAY_NONE,
-          selector: ".banner, .banners, .ads, .ad, .advert")));
+          selector: ".privacy-info"),
+    ));
+    contentBlockers.add(ContentBlocker(
+        trigger: ContentBlockerTrigger(
+          urlFilter: ".*",
+        ),
+        action: ContentBlockerAction(
+            type: ContentBlockerActionType.CSS_DISPLAY_NONE,
+            selector: ".banner, .banners, .ads, .ad, .advert")));
+  }
 
-}
   Future<void> _initialize() async {
     _webVM.setLoading(true);
     _deviceEntity = await ServiceLocator().deviceRepo.fetchDeviceInfo();
@@ -536,13 +530,16 @@ void _blockContent(){
 
   @override
   Widget build(BuildContext context) {
-    return AnimatedBuilder(
-      animation: _webVM,
-      builder: (context, _) => Scaffold(
-        backgroundColor: Colors.black,
-        body: Stack(
+    return OfflineBuilder(
+      connectivityBuilder: (
+          BuildContext context,
+          ConnectivityResult connectivity,
+          Widget child,
+          ) {
+        final bool connected = connectivity != ConnectivityResult.none;
+        return Stack(
           children: [
-            if (_initialized)
+            if (_initialized && connected)
               SafeArea(
                 child: InAppWebView(
                   initialSettings: InAppWebViewSettings(
@@ -552,7 +549,6 @@ void _blockContent(){
                     mediaPlaybackRequiresUserGesture: false,
                     allowsInlineMediaPlayback: true,
                     allowsPictureInPictureMediaPlayback: true,
-                    // Для iOS:
                     useOnDownloadStart: true,
                     javaScriptCanOpenWindowsAutomatically: true,
                   ),
@@ -569,7 +565,6 @@ void _blockContent(){
                     widget.loaderProvider.setProgress(1.0);
                     await _webVM.injectDeviceData(_deviceEntity, widget.fcmToken);
 
-                    // Задержка и отправка сырых данных
                     Future.delayed(const Duration(seconds: 6), () {
                       _webVM.sendRawAnalyticsToWeb(
                         analyticsVM: _analyticsVM,
@@ -583,9 +578,37 @@ void _blockContent(){
                   },
                 ),
               ),
+            AnimatedSwitcher(
+              duration: const Duration(milliseconds: 400),
+              child: connected
+                  ? const SizedBox.shrink()
+                  : Align(
+                alignment: Alignment.topCenter,
+                child: Padding(
+                  padding: const EdgeInsets.only(top: 100),
+                  child: Container(
+                    color: Colors.redAccent,
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(vertical: 18, horizontal: 16),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: const [
+                        Icon(Icons.wifi_off, color: Colors.white, size: 30),
+                        SizedBox(width: 12),
+                        Text(
+                          "No internet connection",
+                          style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
           ],
-        ),
-      ),
+        );
+      },
+      child: const SizedBox.shrink(),
     );
   }
 }

@@ -37,6 +37,8 @@ dependencies:
   flutter_inappwebview: ^6.0.0
   progress_bar_countdown: ^0.0.3
   flutter_circular_progress_indicator: ^0.0.3
+  connectivity_plus: ^5.0.2
+  flutter_offline: ^3.0.0
 
 
 
