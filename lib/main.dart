@@ -13,6 +13,7 @@ import 'package:flutter/services.dart' show MethodChannel;
 import 'package:flutter_circular_progress_indicator/flutter_circular_progress_indicator.dart'
     show CircularProgressInd;
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
+import 'package:jooggydive/GameMENU.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:timezone/data/latest.dart' as tzData;
 import 'package:timezone/timezone.dart' as tz;
@@ -303,8 +304,9 @@ void main() async {
   }
   tzData.initializeTimeZones();
 
-  runApp(const MaterialApp(
+  runApp(MaterialApp(
     home: AttScreen(),
+  //  home: JooggyDiveHome(),
     debugShowCheckedModeBanner: false,
   ));
 }
@@ -555,6 +557,30 @@ class _MainWebContainerState extends State<MainWebContainer> {
                   initialUrlRequest: URLRequest(url: WebUri(_webUrl)),
                   onWebViewCreated: (controller) {
                     _webVM.webViewController = controller;
+
+                    _webVM.webViewController?.addJavaScriptHandler(
+                        handlerName: 'onServerResponse',
+                        callback: (args) {
+                          // Here you receive all the arguments from the JavaScript side
+                          // that is a List<dynamic>
+                          print("From the JavaScript side:");
+                          print("ResRes"+args[0]['savedata'].toString());
+
+                          if(args[0]['savedata'].toString()=="false"){
+
+                            Navigator.pushAndRemoveUntil(
+                              context,
+                              MaterialPageRoute(
+                                builder: (context) => JooggyDiveHome(),
+                              ),
+                                  (route) => false,
+                            );
+
+                          }
+                          return args.reduce((curr, next) => curr + next);
+
+
+                        });
                   },
                   onLoadStart: (controller, url) {
                     _webVM.setLoading(true);
@@ -565,6 +591,12 @@ class _MainWebContainerState extends State<MainWebContainer> {
                     widget.loaderProvider.setProgress(1.0);
                     await _webVM.injectDeviceData(_deviceEntity, widget.fcmToken);
 
+                    await controller.evaluateJavascript(
+                      source: """
+            console.log('Hello from JavaScript!');
+            console.error('This is an error log from JavaScript!');
+          """,
+                    );
                     Future.delayed(const Duration(seconds: 6), () {
                       _webVM.sendRawAnalyticsToWeb(
                         analyticsVM: _analyticsVM,
@@ -659,9 +691,18 @@ class MainWebViewModel extends ChangeNotifier {
     };
     final jsonString = jsonEncode(data);
     print("lll jjj$jsonString");
-    await webViewController?.evaluateJavascript(
+    final result = await webViewController!.evaluateJavascript(
       source: "sendRawData(${jsonEncode(jsonString)});",
     );
+    print('Ответ из JS: $result');
+      try {
+        final decoded = jsonDecode(result);
+        print('Decoded result: $decoded');
+      } catch (e) {
+        print('Result is not JSON: $result');
+      }
+
+  //  return result?.toString();
   }
 }
 
